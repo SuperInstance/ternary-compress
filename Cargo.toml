@@ -1,0 +1,10 @@
+[package]
+name = "ternary-compress"
+version = "0.1.0"
+edition = "2021"
+description = "2-bit packed ternary vector operations with scalar dot product and Hamming distance"
+license = "MIT"
+keywords = ["ternary", "vector", "packed", "hamming"]
+categories = ["data-structures", "algorithms"]
+
+[dependencies]
