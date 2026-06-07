@@ -2,9 +2,10 @@
 name = "ternary-compress"
 version = "0.1.0"
 edition = "2021"
-description = "2-bit packed ternary vector operations with scalar dot product and Hamming distance"
+description = "Balanced ternary compression for constrained devices — {-1, 0, +1} encoding"
 license = "MIT"
-keywords = ["ternary", "vector", "packed", "hamming"]
-categories = ["data-structures", "algorithms"]
+keywords = ["ternary", "compression", "embedded", "encoding"]
+categories = ["algorithms", "embedded", "data-structures"]
+repository = "https://github.com/SuperInstance/ternary-compress"
 
 [dependencies]
