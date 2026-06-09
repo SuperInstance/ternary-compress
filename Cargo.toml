@@ -2,10 +2,7 @@
 name = "ternary-compress"
 version = "0.1.0"
 edition = "2021"
-description = "Balanced ternary compression for constrained devices — {-1, 0, +1} encoding"
-license = "MIT"
-keywords = ["ternary", "compression", "embedded", "encoding"]
-categories = ["algorithms", "embedded", "data-structures"]
+description = "Experiment: ternary data compression for sparse GPU workloads. Run-length encoding, sparse ternary format, and dictionary compression for {-1,0,+1} data."
+license = "Apache-2.0"
 repository = "https://github.com/SuperInstance/ternary-compress"
-
-[dependencies]
+documentation = "https://docs.rs/ternary-compress"
