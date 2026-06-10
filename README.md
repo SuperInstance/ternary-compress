@@ -1,93 +1,67 @@
 # ternary-compress
 
-Experiment: ternary data compression for sparse GPU workloads. Run-length encoding, sparse ternary format, and dictionary compression for {-1,0,+1} data.
+Compression codecs for ternary data sequences — RLE, sparse formats, and dictionary encoding for {-1, 0, +1}.
 
-## Why This Matters
+## Why This Exists
 
-# ternary-compress
-Ternary data compression for sparse GPU workloads.
-Run-length encoding, sparse format, and dictionary compression for {-1,0,+1}.
+Ternary neural network weights are mostly zeros. A typical ternary model after sign quantization has 60-80% zeros. Standard compression (gzip, LZ4) doesn't understand ternary structure — it sees bytes, not trits. This crate provides compression codecs that exploit ternary-specific patterns: run-length encoding for long sequences of the same value, sparse format for mostly-zero data, and dictionary compression for repeated ternary patterns across weight matrices.
 
-## The Five-Layer Stack
+## Architecture
 
-This crate is part of the **Oxide Stack** — a distributed GPU runtime built on five layers:
+### Compression Formats
 
-```
-┌─────────────────┐
-│  cudaclaw        │  Persistent GPU kernels, warp consensus, SmartCRDT
-├─────────────────┤
-│  cuda-oxide      │  Flux → MIR → Pliron → NVVM → PTX compiler
-├─────────────────┤
-│  flux-core       │  Bytecode VM + A2A agent protocol
-├─────────────────┤
-│  pincher         │  "Vector DB as runtime, LLM as compiler"
-├─────────────────┤
-│  open-parallel   │  Async runtime (tokio fork)
-└─────────────────┘
-```
-
-The key insight: **ternary values {-1, 0, +1} map directly to GPU compute**. They pack 16× denser than FP32, enable XNOR+popcount matmul, and conservation laws become compile-time checks.
-
-## Design
-
-Every value in this crate follows **ternary algebra** (Z₃):
-
-| Value | Meaning | GPU Analog |
-|-------|---------|------------|
-| +1 | Positive / Active / Healthy | Warp vote yes |
-| 0 | Neutral / Pending / Balanced | Warp vote abstain |
-| -1 | Negative / Failed / Overloaded | Warp vote no |
-
-This isn't arbitrary — ternary is the natural encoding for:
-1. **BitNet b1.58** (Microsoft) — ternary LLMs at 60% less power
-2. **GPU warp voting** — hardware ballot returns ternary consensus
-3. **Conservation laws** — {-1, 0, +1} preserves quantity
-
-## Key Types
-
-```rust
-pub fn rle_encode
-pub fn rle_decode
-pub struct SparseTernary
-pub fn from_dense
-pub fn to_dense
-pub fn density
-pub fn compression_ratio
-pub struct TernaryDict
-pub fn new
-pub fn add
-pub fn get
-pub fn encode
-```
+- **RLE (Run-Length Encoding)**: `rle_encode` / `rle_decode` — Pairs of (value, count). Efficient for weight matrices with long runs of zeros or identical values.
+- **Sparse Ternary**: `SparseTernary` — Stores only non-zero values with their indices. Includes `density()` and `compression_ratio()`.
+- **Dictionary Compression**: `TernaryDict` — Builds a dictionary of common patterns, encodes data as dictionary indices. Good for repeated sub-patterns across layers.
+- **Trit packing**: `pack_trits` / `unpack_trits` — Low-level 16-trit → u32 packing.
 
 ## Usage
 
-```toml
-[dependencies]
-ternary-compress = "0.1.0"
-```
-
 ```rust
 use ternary_compress::*;
-// See src/lib.rs tests for complete working examples
+
+// RLE for weight matrices
+let weights = vec![0, 0, 0, 0, 1, 0, 0, -1, -1, 0i8];
+let rle = rle_encode(&weights);
+// [(0, 4), (1, 1), (0, 2), (-1, 2), (0, 1)]
+let decoded = rle_decode(&rle);
+assert_eq!(weights, decoded);
+
+// Sparse format for mostly-zero data
+let dense = vec![0, 0, 1, 0, 0, -1, 0, 0, 0, 1i8];
+let sparse = SparseTernary::from_dense(&dense);
+println!("Density: {:.1}%", sparse.density() * 100.0);
+println!("Compression: {:.1}×", sparse.compression_ratio());
+
+// Dictionary compression
+let mut dict = TernaryDict::new();
+let data = vec![1, 0, -1, 0, 1, 0, -1, 0]; // repeating pattern
+let encoded = dict.encode(&data, 4); // chunk size 4
+let decoded = dict.decode(&encoded, 4);
 ```
 
-## Testing
+## API Reference
 
-```bash
-git clone https://github.com/SuperInstance/ternary-compress.git
-cd ternary-compress
-cargo test    # 7 tests
-```
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `rle_encode(data)` | `Vec<(i8, usize)>` | Run-length encode ternary data |
+| `rle_decode(runs)` | `Vec<i8>` | Decode RLE back to dense |
+| `SparseTernary::from_dense(data)` | `SparseTernary` | Create sparse representation |
+| `sparse.to_dense()` | `Vec<i8>` | Reconstruct dense array |
+| `sparse.density()` | `f64` | Fraction of non-zero values |
+| `sparse.compression_ratio()` | `f64` | Dense size / sparse size |
+| `TernaryDict::new()` | `TernaryDict` | Create empty dictionary |
+| `dict.encode(data, chunk_size)` | `Vec<usize>` | Dictionary-encode data |
+| `dict.decode(indices, chunk_size)` | `Vec<i8>` | Decode back to ternary |
+| `pack_trits(trits)` | `u32` | Pack 16 trits into one u32 |
+| `unpack_trits(packed)` | `[i8; 16]` | Unpack u32 to 16 trits |
 
-## Stats
+## The Deeper Idea
 
-| Metric | Value |
-|--------|-------|
-| Tests | 7 |
-| Lines of Rust | 196 |
-| Public API | 16 items |
+Ternary compression is qualitatively different from binary compression because the **zero value is semantically meaningful**, not just "absent." In binary compression, a zero bit means "off." In ternary compression, zero means "the model chose not to activate this connection" — it's a deliberate decision boundary, not empty space. This means sparse formats must preserve zero positions faithfully, and dictionary compression should treat {+1, 0, -1} triples as atomic units.
 
-## License
+## Related Crates
 
-Apache-2.0
+- **ternary-pack** — bit-packing trits into u32 registers
+- **ternary-bloom-filter** — ternary Bloom filters for membership testing
+- **ternary-sketch** — approximate counting with ternary sketch
